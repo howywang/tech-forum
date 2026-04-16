@@ -1,122 +1,158 @@
 #!/bin/bash
 
-echo "🚨 Fixing Render Internal Server Error (SQLite safe mode)..."
+echo "🚀 Fixing Infinite Scroll (Dcard mode stable version)..."
+
+mkdir -p templates
 
 ########################################
-# 1. 修 app.py（加安全 API）
+# 1. 修 index.html JS（只替換 script）
 ########################################
 
-cat <<'EOF' > app.py
-from flask import Flask, render_template, request, redirect, jsonify
-import sqlite3
-import os
+cat <<'EOF' > templates/index.html
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>科技論壇</title>
 
-app = Flask(__name__)
+<style>
+body {
+  margin: 0;
+  font-family: -apple-system;
+  background: #0b1220;
+  color: #e5e7eb;
+}
 
-DB = "forum.db"
+.container {
+  max-width: 700px;
+  margin: auto;
+  padding: 20px;
+}
 
-def get_db():
-    conn = sqlite3.connect(DB)
-    conn.row_factory = sqlite3.Row
-    return conn
+.card {
+  background: #111827;
+  padding: 16px;
+  border-radius: 14px;
+  margin-bottom: 12px;
+}
 
+.title {
+  font-size: 18px;
+  color: #60a5fa;
+  font-weight: bold;
+}
 
-@app.route("/")
-def index():
-    db = get_db()
+.meta {
+  font-size: 12px;
+  color: #9ca3af;
+}
 
-    db.execute("""
-    CREATE TABLE IF NOT EXISTS posts (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        title TEXT,
-        content TEXT,
-        score INTEGER DEFAULT 0
-    )
-    """)
+button {
+  background: #3b82f6;
+  border: none;
+  padding: 6px 10px;
+  border-radius: 8px;
+  color: white;
+}
 
-    db.commit()
+#loader {
+  text-align: center;
+  padding: 20px;
+  color: #9ca3af;
+}
+</style>
+</head>
 
-    posts = db.execute("SELECT * FROM posts ORDER BY id DESC").fetchall()
-    return render_template("index.html", posts=posts)
+<body>
 
+<div class="container">
+  <h1>🚀 科技論壇</h1>
 
-@app.route("/post", methods=["POST"])
-def create_post():
-    title = request.form["title"]
-    content = request.form["content"]
+  <div id="posts"></div>
+  <div id="loader">載入中...</div>
+</div>
 
-    db = get_db()
-    db.execute("INSERT INTO posts (title, content, score) VALUES (?, ?, 0)", (title, content))
-    db.commit()
+<script>
+let page = 0;
+let loading = false;
 
-    return redirect("/")
+async function loadPosts() {
+  if (loading) return;
+  loading = true;
 
+  console.log("loading page:", page);
 
-@app.route("/upvote/<int:post_id>")
-def upvote(post_id):
-    db = get_db()
-    db.execute("UPDATE posts SET score = score + 1 WHERE id=?", (post_id,))
-    db.commit()
-    return redirect("/")
+  const res = await fetch(`/api/posts?page=${page}`);
+  const data = await res.json();
 
+  console.log("data:", data);
 
-@app.route("/api/posts")
-def api_posts():
-    try:
-        page = int(request.args.get("page", 0))
-        limit = 10
-        offset = page * limit
+  const container = document.getElementById("posts");
 
-        db = get_db()
+  data.forEach(p => {
+    const div = document.createElement("div");
+    div.className = "card";
 
-        db.execute("""
-        CREATE TABLE IF NOT EXISTS posts (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            title TEXT,
-            content TEXT,
-            score INTEGER DEFAULT 0
-        )
-        """)
-        db.commit()
+    div.innerHTML = `
+      <div class="title">${p.title}</div>
+      <div class="meta">👍 ${p.score} | ID ${p.id}</div>
+      <div class="content">${p.content}</div>
+      <a href="/upvote/${p.id}"><button>+1</button></a>
+    `;
 
-        posts = db.execute(
-            "SELECT * FROM posts ORDER BY id DESC LIMIT ? OFFSET ?",
-            (limit, offset)
-        ).fetchall()
+    container.appendChild(div);
+  });
 
-        return jsonify([dict(p) for p in posts])
+  if (data.length === 0) {
+    document.getElementById("loader").innerText = "沒有更多文章";
+    window.removeEventListener("scroll", handleScroll);
+  }
 
-    except Exception as e:
-        print("API ERROR:", e)
-        return jsonify({"error": str(e)}), 500
+  page++;
+  loading = false;
+}
 
+// 🔥 stable scroll detection
+function handleScroll() {
+  const scrollTop = window.scrollY;
+  const windowHeight = window.innerHeight;
+  const fullHeight = document.body.offsetHeight;
 
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+  if (scrollTop + windowHeight >= fullHeight - 150) {
+    loadPosts();
+  }
+}
+
+window.addEventListener("scroll", handleScroll);
+
+// init
+loadPosts();
+</script>
+
+</body>
+</html>
 EOF
 
-echo "✅ app.py fixed (Render-safe SQLite + API safe mode)"
+echo "✅ Infinite scroll fixed (stable version)"
 
 ########################################
 # 2. git commit + push
 ########################################
 
 git add .
-git commit -m "fix render 500 error + sqlite init safety" 2>/dev/null
+git commit -m "fix infinite scroll loading issue" 2>/dev/null
 git branch -M main
-
-echo "🚀 pushing to GitHub..."
 
 git push -u origin main
 
 ########################################
-# 3. done
+# done
 ########################################
 
 echo ""
 echo "🎉 DONE!"
-echo "👉 Wait 1-2 min for Render auto redeploy"
-echo "👉 Then open:"
-echo "   https://tech-forum-k3m3.onrender.com/"
+echo "👉 Wait Render redeploy (1-2 min)"
+echo ""
+echo "👉 Then test:"
+echo "https://tech-forum-k3m3.onrender.com/"
 echo ""
