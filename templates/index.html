@@ -1,0 +1,25 @@
+<h1>科技業論壇</h1>
+
+<form action="/post" method="post">
+<input name="title" placeholder="標題">
+<br>
+<textarea name="content"></textarea>
+<br>
+<button type="submit">發文</button>
+</form>
+
+<hr>
+
+{% for post in posts %}
+<div>
+<h3>
+<a href="/post/{{post[0]}}">{{post[1]}}</a>
+</h3>
+
+👍 {{post[3]}}
+<a href="/upvote/{{post[0]}}">+1</a>
+
+<p>{{post[2]}}</p>
+</div>
+<hr>
+{% endfor %}
