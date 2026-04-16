@@ -1,171 +1,122 @@
 #!/bin/bash
 
-echo "🚀 Full Upgrade: Dcard UI + API + Infinite Scroll"
+echo "🚨 Fixing Render Internal Server Error (SQLite safe mode)..."
 
-#####################################
-# 1. 修改 app.py（自動加 API）
-#####################################
+########################################
+# 1. 修 app.py（加安全 API）
+########################################
 
-if ! grep -q "/api/posts" app.py; then
+cat <<'EOF' > app.py
+from flask import Flask, render_template, request, redirect, jsonify
+import sqlite3
+import os
 
-cat <<'EOF' >> app.py
+app = Flask(__name__)
+
+DB = "forum.db"
+
+def get_db():
+    conn = sqlite3.connect(DB)
+    conn.row_factory = sqlite3.Row
+    return conn
 
 
-from flask import jsonify
+@app.route("/")
+def index():
+    db = get_db()
+
+    db.execute("""
+    CREATE TABLE IF NOT EXISTS posts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT,
+        content TEXT,
+        score INTEGER DEFAULT 0
+    )
+    """)
+
+    db.commit()
+
+    posts = db.execute("SELECT * FROM posts ORDER BY id DESC").fetchall()
+    return render_template("index.html", posts=posts)
+
+
+@app.route("/post", methods=["POST"])
+def create_post():
+    title = request.form["title"]
+    content = request.form["content"]
+
+    db = get_db()
+    db.execute("INSERT INTO posts (title, content, score) VALUES (?, ?, 0)", (title, content))
+    db.commit()
+
+    return redirect("/")
+
+
+@app.route("/upvote/<int:post_id>")
+def upvote(post_id):
+    db = get_db()
+    db.execute("UPDATE posts SET score = score + 1 WHERE id=?", (post_id,))
+    db.commit()
+    return redirect("/")
+
 
 @app.route("/api/posts")
 def api_posts():
-    page = int(request.args.get("page", 0))
-    limit = 10
-    offset = page * limit
+    try:
+        page = int(request.args.get("page", 0))
+        limit = 10
+        offset = page * limit
 
-    db = get_db()
-    posts = db.execute(
-        "SELECT * FROM posts ORDER BY id DESC LIMIT ? OFFSET ?",
-        (limit, offset)
-    ).fetchall()
+        db = get_db()
 
-    return jsonify([dict(p) for p in posts])
+        db.execute("""
+        CREATE TABLE IF NOT EXISTS posts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT,
+            content TEXT,
+            score INTEGER DEFAULT 0
+        )
+        """)
+        db.commit()
+
+        posts = db.execute(
+            "SELECT * FROM posts ORDER BY id DESC LIMIT ? OFFSET ?",
+            (limit, offset)
+        ).fetchall()
+
+        return jsonify([dict(p) for p in posts])
+
+    except Exception as e:
+        print("API ERROR:", e)
+        return jsonify({"error": str(e)}), 500
+
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
 EOF
 
-echo "✅ API added to app.py"
-else
-echo "⚠️ API already exists, skip"
-fi
+echo "✅ app.py fixed (Render-safe SQLite + API safe mode)"
 
-#####################################
-# 2. 重寫 index.html（Dcard UI + infinite scroll）
-#####################################
+########################################
+# 2. git commit + push
+########################################
 
-mkdir -p templates
+git add .
+git commit -m "fix render 500 error + sqlite init safety" 2>/dev/null
+git branch -M main
 
-cat <<'EOF' > templates/index.html
-<!DOCTYPE html>
-<html>
-<head>
-<meta charset="UTF-8">
-<title>科技論壇</title>
+echo "🚀 pushing to GitHub..."
 
-<style>
-body {
-  margin: 0;
-  font-family: -apple-system;
-  background: #0b1220;
-  color: #e5e7eb;
-}
+git push -u origin main
 
-.container {
-  max-width: 700px;
-  margin: auto;
-  padding: 20px;
-}
-
-h1 {
-  text-align: center;
-}
-
-.card {
-  background: #111827;
-  padding: 16px;
-  border-radius: 14px;
-  margin-bottom: 12px;
-}
-
-.title {
-  font-size: 18px;
-  color: #60a5fa;
-  font-weight: bold;
-}
-
-.meta {
-  font-size: 12px;
-  color: #9ca3af;
-}
-
-.content {
-  margin-top: 8px;
-}
-
-button {
-  background: #3b82f6;
-  border: none;
-  padding: 6px 10px;
-  border-radius: 8px;
-  color: white;
-  cursor: pointer;
-}
-
-#loader {
-  text-align: center;
-  padding: 20px;
-  color: #9ca3af;
-}
-</style>
-</head>
-
-<body>
-
-<div class="container">
-  <h1>🚀 科技論壇</h1>
-
-  <div id="posts"></div>
-  <div id="loader">載入中...</div>
-</div>
-
-<script>
-let page = 0;
-let loading = false;
-
-async function loadPosts() {
-  if (loading) return;
-  loading = true;
-
-  const res = await fetch(`/api/posts?page=${page}`);
-  const data = await res.json();
-
-  const container = document.getElementById("posts");
-
-  data.forEach(p => {
-    const div = document.createElement("div");
-    div.className = "card";
-
-    div.innerHTML = `
-      <div class="title">${p.title}</div>
-      <div class="meta">👍 ${p.score} | ID ${p.id}</div>
-      <div class="content">${p.content}</div>
-      <a href="/upvote/${p.id}"><button>+1</button></a>
-    `;
-
-    container.appendChild(div);
-  });
-
-  if (data.length === 0) {
-    document.getElementById("loader").innerText = "沒有更多文章";
-  }
-
-  page++;
-  loading = false;
-}
-
-window.addEventListener("scroll", () => {
-  if (window.innerHeight + window.scrollY >= document.body.offsetHeight - 200) {
-    loadPosts();
-  }
-});
-
-loadPosts();
-</script>
-
-</body>
-</html>
-EOF
-
-echo "✅ UI replaced with Dcard infinite scroll"
-#####################################
+########################################
+# 3. done
+########################################
 
 echo ""
-echo "🎉 FULL UPGRADE DONE"
-echo ""
-echo "👉 Run:"
-echo "python3 app.py"
+echo "🎉 DONE!"
+echo "👉 Wait 1-2 min for Render auto redeploy"
+echo "👉 Then open:"
+echo "   https://tech-forum-k3m3.onrender.com/"
 echo ""
