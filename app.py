@@ -51,3 +51,20 @@ def upvote(id):
 
 if __name__ == "__main__":
     app.run(debug=True)
+
+
+from flask import jsonify
+
+@app.route("/api/posts")
+def api_posts():
+    page = int(request.args.get("page", 0))
+    limit = 10
+    offset = page * limit
+
+    db = get_db()
+    posts = db.execute(
+        "SELECT * FROM posts ORDER BY id DESC LIMIT ? OFFSET ?",
+        (limit, offset)
+    ).fetchall()
+
+    return jsonify([dict(p) for p in posts])

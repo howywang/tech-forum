@@ -1,12 +1,43 @@
 #!/bin/bash
 
-echo "🚀 Upgrading to Dcard-level UI + Infinite Scroll..."
+echo "🚀 Full Upgrade: Dcard UI + API + Infinite Scroll"
+
+#####################################
+# 1. 修改 app.py（自動加 API）
+#####################################
+
+if ! grep -q "/api/posts" app.py; then
+
+cat <<'EOF' >> app.py
+
+
+from flask import jsonify
+
+@app.route("/api/posts")
+def api_posts():
+    page = int(request.args.get("page", 0))
+    limit = 10
+    offset = page * limit
+
+    db = get_db()
+    posts = db.execute(
+        "SELECT * FROM posts ORDER BY id DESC LIMIT ? OFFSET ?",
+        (limit, offset)
+    ).fetchall()
+
+    return jsonify([dict(p) for p in posts])
+EOF
+
+echo "✅ API added to app.py"
+else
+echo "⚠️ API already exists, skip"
+fi
+
+#####################################
+# 2. 重寫 index.html（Dcard UI + infinite scroll）
+#####################################
 
 mkdir -p templates
-
-########################################
-# index.html（Dcard風 + infinite scroll）
-########################################
 
 cat <<'EOF' > templates/index.html
 <!DOCTYPE html>
@@ -18,7 +49,7 @@ cat <<'EOF' > templates/index.html
 <style>
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont;
+  font-family: -apple-system;
   background: #0b1220;
   color: #e5e7eb;
 }
@@ -31,7 +62,6 @@ body {
 
 h1 {
   text-align: center;
-  margin-bottom: 20px;
 }
 
 .card {
@@ -39,25 +69,21 @@ h1 {
   padding: 16px;
   border-radius: 14px;
   margin-bottom: 12px;
-  box-shadow: 0 2px 10px rgba(0,0,0,0.3);
 }
 
 .title {
   font-size: 18px;
-  font-weight: bold;
   color: #60a5fa;
-  cursor: pointer;
+  font-weight: bold;
 }
 
 .meta {
   font-size: 12px;
   color: #9ca3af;
-  margin-top: 6px;
 }
 
 .content {
   margin-top: 8px;
-  color: #e5e7eb;
 }
 
 button {
@@ -80,13 +106,10 @@ button {
 <body>
 
 <div class="container">
+  <h1>🚀 科技論壇</h1>
 
-<h1>🚀 科技論壇</h1>
-
-<div id="posts"></div>
-
-<div id="loader">載入中...</div>
-
+  <div id="posts"></div>
+  <div id="loader">載入中...</div>
 </div>
 
 <script>
@@ -120,18 +143,16 @@ async function loadPosts() {
     document.getElementById("loader").innerText = "沒有更多文章";
   }
 
-  page += 1;
+  page++;
   loading = false;
 }
 
-// infinite scroll
 window.addEventListener("scroll", () => {
   if (window.innerHeight + window.scrollY >= document.body.offsetHeight - 200) {
     loadPosts();
   }
 });
 
-// initial load
 loadPosts();
 </script>
 
@@ -139,25 +160,12 @@ loadPosts();
 </html>
 EOF
 
-########################################
-# 提示
-########################################
+echo "✅ UI replaced with Dcard infinite scroll"
+#####################################
 
 echo ""
-echo "✅ Dcard UI upgraded!"
+echo "🎉 FULL UPGRADE DONE"
 echo ""
-echo "⚠️ You MUST also add API route in app.py:"
-echo ""
-echo "from flask import jsonify"
-echo ""
-echo "@app.route('/api/posts')"
-echo "def api_posts():"
-echo "    page = int(request.args.get('page', 0))"
-echo "    limit = 10"
-echo "    offset = page * limit"
-echo ""
-echo "    db = get_db()"
-echo "    posts = db.execute('SELECT * FROM posts ORDER BY id DESC LIMIT ? OFFSET ?', (limit, offset)).fetchall()"
-echo ""
-echo "    return jsonify([dict(p) for p in posts])"
+echo "👉 Run:"
+echo "python3 app.py"
 echo ""
