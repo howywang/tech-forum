@@ -2,52 +2,43 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>科技論壇</title>
+<title>科技論壇 DEBUG MODE</title>
 
 <style>
 body {
   margin: 0;
-  font-family: -apple-system;
+  font-family: monospace;
   background: #0b1220;
   color: #e5e7eb;
 }
 
 .container {
-  max-width: 700px;
+  max-width: 800px;
   margin: auto;
   padding: 20px;
 }
 
 .card {
   background: #111827;
-  padding: 16px;
-  border-radius: 14px;
-  margin-bottom: 12px;
+  padding: 12px;
+  margin-bottom: 10px;
+  border-radius: 10px;
 }
 
-.title {
-  font-size: 18px;
-  color: #60a5fa;
-  font-weight: bold;
-}
+.title { color: #60a5fa; font-weight: bold; }
 
-.meta {
+.debug {
+  background: #1f2937;
+  padding: 10px;
+  margin-bottom: 10px;
+  border-radius: 10px;
   font-size: 12px;
-  color: #9ca3af;
+  color: #fbbf24;
 }
 
-button {
-  background: #3b82f6;
-  border: none;
-  padding: 6px 10px;
-  border-radius: 8px;
-  color: white;
-}
-
-#loader {
-  text-align: center;
-  padding: 20px;
-  color: #9ca3af;
+#error {
+  color: red;
+  white-space: pre-wrap;
 }
 </style>
 </head>
@@ -55,67 +46,108 @@ button {
 <body>
 
 <div class="container">
-  <h1>🚀 科技論壇</h1>
 
-  <div id="posts"></div>
-  <div id="loader">載入中...</div>
+<h2>🚀 DEBUG MODE - Infinite Scroll</h2>
+
+<div class="debug">
+  page: <span id="page">0</span><br>
+  loading: <span id="loading">false</span><br>
+  status: <span id="status">idle</span>
+</div>
+
+<div id="error"></div>
+
+<div id="posts"></div>
+<div id="loader">載入中...</div>
+
 </div>
 
 <script>
+
 let page = 0;
 let loading = false;
 
-async function loadPosts() {
-  if (loading) return;
-  loading = true;
-
-  console.log("loading page:", page);
-
-  const res = await fetch(`/api/posts?page=${page}`);
-  const data = await res.json();
-
-  console.log("data:", data);
-
-  const container = document.getElementById("posts");
-
-  data.forEach(p => {
-    const div = document.createElement("div");
-    div.className = "card";
-
-    div.innerHTML = `
-      <div class="title">${p.title}</div>
-      <div class="meta">👍 ${p.score} | ID ${p.id}</div>
-      <div class="content">${p.content}</div>
-      <a href="/upvote/${p.id}"><button>+1</button></a>
-    `;
-
-    container.appendChild(div);
-  });
-
-  if (data.length === 0) {
-    document.getElementById("loader").innerText = "沒有更多文章";
-    window.removeEventListener("scroll", handleScroll);
-  }
-
-  page++;
-  loading = false;
+function updateDebug(statusText) {
+  document.getElementById("page").innerText = page;
+  document.getElementById("loading").innerText = loading;
+  document.getElementById("status").innerText = statusText;
 }
 
-// 🔥 stable scroll detection
+async function loadPosts() {
+  if (loading) {
+    updateDebug("blocked (loading=true)");
+    return;
+  }
+
+  loading = true;
+  updateDebug("fetching API...");
+
+  try {
+    console.log("FETCH page:", page);
+
+    const res = await fetch(`/api/posts?page=${page}`);
+
+    updateDebug("status: " + res.status);
+
+    const text = await res.text();
+    console.log("RAW RESPONSE:", text);
+
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch (e) {
+      document.getElementById("error").innerText =
+        "JSON PARSE ERROR:\n" + text;
+      loading = false;
+      updateDebug("json error");
+      return;
+    }
+
+    const container = document.getElementById("posts");
+
+    data.forEach(p => {
+      const div = document.createElement("div");
+      div.className = "card";
+
+      div.innerHTML = `
+        <div class="title">${p.title}</div>
+        <div>ID: ${p.id}</div>
+        <div>score: ${p.score}</div>
+        <div>${p.content}</div>
+      `;
+
+      container.appendChild(div);
+    });
+
+    if (data.length === 0) {
+      document.getElementById("loader").innerText = "NO MORE DATA";
+    }
+
+    page++;
+    loading = false;
+    updateDebug("done");
+
+  } catch (err) {
+    document.getElementById("error").innerText = err.toString();
+    loading = false;
+    updateDebug("fetch error");
+  }
+}
+
 function handleScroll() {
   const scrollTop = window.scrollY;
   const windowHeight = window.innerHeight;
   const fullHeight = document.body.offsetHeight;
 
-  if (scrollTop + windowHeight >= fullHeight - 150) {
+  if (scrollTop + windowHeight >= fullHeight - 200) {
     loadPosts();
   }
 }
 
 window.addEventListener("scroll", handleScroll);
 
-// init
 loadPosts();
+
 </script>
 
 </body>
