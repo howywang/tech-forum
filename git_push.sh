@@ -1,37 +1,31 @@
 #!/bin/bash
 
-echo "🚀 Git Auto Push Starting..."
+echo "🚀 Git Auto Push (Fixed Repo Mode)"
+
+REPO="https://github.com/howywang/tech-forum.git"
 
 #####################################
-# 確認在 git repo
+# init git if needed
 #####################################
 
 if [ ! -d ".git" ]; then
-  echo "❌ No git repo found. Initializing..."
+  echo "📦 init git repo..."
   git init
 fi
 
 #####################################
-# GitHub repo input
+# add files
 #####################################
 
-echo ""
-echo "👉 請貼上 GitHub repo URL："
-read repo
-
-#####################################
-# add
-#####################################
-
-echo "📦 Adding files..."
+echo "📦 git add ."
 git add .
 
 #####################################
-# commit
+# commit (ignore empty)
 #####################################
 
-echo "📝 Creating commit..."
-git commit -m "auto deploy commit" 2>/dev/null
+echo "📝 git commit"
+git commit -m "auto update" 2>/dev/null
 
 #####################################
 # branch fix
@@ -40,30 +34,24 @@ git commit -m "auto deploy commit" 2>/dev/null
 git branch -M main
 
 #####################################
-# remote handling
+# remote setup
 #####################################
 
 if git remote get-url origin >/dev/null 2>&1; then
-    echo "🔁 Updating remote origin..."
+    echo "🔁 reset origin..."
     git remote remove origin
 fi
 
-git remote add origin $repo
+git remote add origin $REPO
 
 #####################################
 # push
 #####################################
 
-echo "🚀 Pushing to GitHub..."
-
+echo "🚀 pushing to GitHub..."
 git push -u origin main
-
-#####################################
-# done
-#####################################
 
 echo ""
 echo "✅ DONE!"
-echo "👉 If successful, your code is now on GitHub:"
-echo $repo
+echo "👉 Repo: $REPO"
 echo ""
