@@ -26,7 +26,6 @@ body {
 }
 
 .title { color: #60a5fa; font-weight: bold; }
-
 .debug {
   background: #1f2937;
   padding: 10px;
@@ -66,6 +65,57 @@ body {
 
 let page = 0;
 let loading = false;
+let consecutiveFailures = 0;
+const MAX_RETRIES = 5;
+const MAX_RETRY_DELAY_MS = 8000;
+const FETCH_TIMEOUT_MS = 5000;
+
+function showError(msg) {
+  document.getElementById("error").innerText = msg;
+}
+
+function clearError() {
+  document.getElementById("error").innerText = "";
+}
+
+function scheduleRetry(delayMs, reason) {
+  if (consecutiveFailures >= MAX_RETRIES) {
+    showError(`${reason}\n已達最大重試次數 (${MAX_RETRIES})，請重新整理頁面`);
+    updateDebug("max retries exceeded");
+    return;
+  }
+
+  const delaySec = Math.round(delayMs / 1000);
+  updateDebug(`retry in ${delaySec}s`);
+  showError(`${reason}\n${delaySec} 秒後自動重試...`);
+  setTimeout(() => {
+    loadPosts();
+  }, delayMs);
+}
+
+function renderPost(container, post) {
+  const card = document.createElement("div");
+  card.className = "card";
+
+  const title = document.createElement("div");
+  title.className = "title";
+  title.textContent = post.title ?? "(無標題)";
+
+  const id = document.createElement("div");
+  id.textContent = `ID: ${post.id ?? "-"}`;
+
+  const score = document.createElement("div");
+  score.textContent = `score: ${post.score ?? 0}`;
+
+  const content = document.createElement("div");
+  content.textContent = post.content ?? "";
+
+  card.appendChild(title);
+  card.appendChild(id);
+  card.appendChild(score);
+  card.appendChild(content);
+  container.appendChild(card);
+}
 
 function updateDebug(statusText) {
   document.getElementById("page").innerText = page;
@@ -85,7 +135,20 @@ async function loadPosts() {
   try {
     console.log("FETCH page:", page);
 
-    const res = await fetch(`/api/posts?page=${page}`);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+
+    let res;
+    try {
+      res = await fetch(`/api/posts?page=${page}`, {
+        headers: {
+          "Accept": "application/json"
+        },
+        signal: controller.signal
+      });
+    } finally {
+      clearTimeout(timeoutId);
+    }
 
     updateDebug("status: " + res.status);
 
@@ -96,41 +159,62 @@ async function loadPosts() {
     try {
       data = JSON.parse(text);
     } catch (e) {
-      document.getElementById("error").innerText =
-        "JSON PARSE ERROR:\n" + text;
+      showError("JSON PARSE ERROR:\n" + text);
       loading = false;
-      updateDebug("json error");
+      consecutiveFailures += 1;
+      scheduleRetry(Math.min(MAX_RETRY_DELAY_MS, 1000 * consecutiveFailures), "回應不是 JSON");
+      return;
+    }
+
+    if (!res.ok) {
+      const msg = `${data?.error || "API Error"}${data?.error_description ? `\n${data.error_description}` : ""}`;
+      loading = false;
+      consecutiveFailures += 1;
+      scheduleRetry(Math.min(MAX_RETRY_DELAY_MS, 1000 * consecutiveFailures), msg);
+      return;
+    }
+
+    if (!Array.isArray(data)) {
+      const msg = `${data?.error || "API 回傳格式錯誤"}${data?.error_description ? `\n${data.error_description}` : ""}`;
+      loading = false;
+      consecutiveFailures += 1;
+      scheduleRetry(Math.min(MAX_RETRY_DELAY_MS, 1000 * consecutiveFailures), msg);
       return;
     }
 
     const container = document.getElementById("posts");
+    if (!container) {
+      loading = false;
+      showError("錯誤：找不到貼文容器元素");
+      updateDebug("dom error");
+      return;
+    }
 
-    data.forEach(p => {
-      const div = document.createElement("div");
-      div.className = "card";
-
-      div.innerHTML = `
-        <div class="title">${p.title}</div>
-        <div>ID: ${p.id}</div>
-        <div>score: ${p.score}</div>
-        <div>${p.content}</div>
-      `;
-
-      container.appendChild(div);
-    });
+    try {
+      data.forEach(p => renderPost(container, p));
+    } catch (renderErr) {
+      loading = false;
+      const message = renderErr instanceof Error ? renderErr.message : String(renderErr);
+      showError(`渲染錯誤: ${message}`);
+      updateDebug("render error");
+      return;
+    }
 
     if (data.length === 0) {
       document.getElementById("loader").innerText = "NO MORE DATA";
     }
 
+    clearError();
+    consecutiveFailures = 0;
     page++;
     loading = false;
     updateDebug("done");
 
   } catch (err) {
-    document.getElementById("error").innerText = err.toString();
     loading = false;
-    updateDebug("fetch error");
+    consecutiveFailures += 1;
+    const message = err instanceof Error ? err.message : String(err);
+    scheduleRetry(Math.min(MAX_RETRY_DELAY_MS, 1000 * consecutiveFailures), `網路錯誤: ${message}`);
   }
 }
 
